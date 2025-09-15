@@ -290,3 +290,22 @@ Live Bar Chart (Kafka JSON streaming)
 Live Line Chart with Alert (Kafka CSV streaming)
 
 ![CSV (Kafka)](images/live_line_chart_example.jpg)
+
+
+
+## Project Consumer - Karto
+
+This custom consumer reads from the file `data/project_messages_case.json` produced by `project_producer_case.py`.  
+
+It processes the incoming JSON messages and visualizes **average sentiment over time**.  
+This chart shows whether the conversation mood is trending more positive or negative.  
+
+### Run Producer
+```bash
+python project_producer_case.py
+```
+
+### Run Custom Consumer
+```bash
+python project_consumer_karto.py
+```
