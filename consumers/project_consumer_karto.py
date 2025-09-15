@@ -2,30 +2,22 @@
 project_consumer_karto.py
 
 Custom consumer for P4 project.
-Reads JSON messages from the producer file and visualizes
-the rolling average sentiment trend over time.
-
-Author: Karto
+Reads live JSON messages from project.json and visualizes sentiment trends.
 """
-
-#####################################
-# Import Modules
-#####################################
 
 import json
 import os
 import sys
 import time
 import pathlib
-from collections import deque  # for rolling window
-
 import matplotlib.pyplot as plt
+
+# Logging utility
 from utils.utils_logger import logger
 
 #####################################
-# Set up Paths - read from the file the producer writes
+# Set up Paths
 #####################################
-
 PROJECT_ROOT = pathlib.Path(__file__).parent.parent
 DATA_FOLDER = PROJECT_ROOT.joinpath("data")
 DATA_FILE = DATA_FOLDER.joinpath("project_live.json")
@@ -35,122 +27,78 @@ logger.info(f"Data folder: {DATA_FOLDER}")
 logger.info(f"Data file: {DATA_FILE}")
 
 #####################################
-# Set up data structures
+# Data structure for storing sentiment values
 #####################################
-
-timestamps = []
 sentiments = []
-ROLLING_WINDOW = 10  # number of latest messages to average
-rolling_sentiments = deque(maxlen=ROLLING_WINDOW)
 
 #####################################
 # Set up live visuals
 #####################################
-
 fig, ax = plt.subplots()
-plt.ion()  # Turn on interactive mode for live updates
+plt.ion()
 
 #####################################
 # Update chart function
 #####################################
-
 def update_chart():
-    """Update the live chart with the latest rolling sentiment values."""
     ax.clear()
+    x_vals = list(range(len(sentiments)))
+    ax.plot(x_vals, sentiments, marker="o", color="gray", label="Raw Sentiment")
 
-    if not timestamps:
-        return
+    if len(sentiments) >= 2:
+        window = 10
+        rolling_avg = [
+            sum(sentiments[max(0, i - window + 1): i + 1]) /
+            len(sentiments[max(0, i - window + 1): i + 1])
+            for i in range(len(sentiments))
+        ]
+        ax.plot(x_vals, rolling_avg, color="green", linewidth=2, label="Rolling Avg (last 10)")
 
-    # Plot raw sentiment (light gray dots)
-    ax.plot(timestamps, sentiments, "o-", color="lightgray", alpha=0.6, label="Raw Sentiment")
-
-    # Plot rolling average (green line)
-    ax.plot(timestamps[-len(rolling_sentiments):], list(rolling_sentiments),
-            color="green", linewidth=2, label=f"Rolling Avg (last {ROLLING_WINDOW})")
-
-    ax.set_xlabel("Timestamps")
-    ax.set_ylabel("Sentiment Score")
-    ax.set_title("Karto - Real-Time Average Sentiment Trend")
+    ax.set_xlabel("Message Index")
+    ax.set_ylabel("Sentiment")
+    ax.set_title("Karto - Real-Time Sentiment Trends")
     ax.legend()
-
-    # Rotate x-axis labels
-    ax.set_xticklabels(timestamps, rotation=45, ha="right")
-
     plt.tight_layout()
     plt.draw()
     plt.pause(0.01)
 
 #####################################
-# Process Message Function
+# Process Message
 #####################################
-
-def process_message(message: str) -> None:
-    """Process a single JSON message and update the chart."""
+def process_message(message: str):
     try:
-        logger.debug(f"Raw message: {message}")
-        message_dict: dict = json.loads(message)
-
-        if isinstance(message_dict, dict):
-            ts = message_dict.get("timestamp", "unknown")
-            sentiment = message_dict.get("sentiment", None)
-
-            if sentiment is not None:
-                timestamps.append(ts)
-                sentiments.append(sentiment)
-
-                # Update rolling average
-                rolling_sentiments.append(sentiment)
-
-                logger.info(f"Message at {ts} | Sentiment: {sentiment}")
-                update_chart()
-            else:
-                logger.warning(f"No sentiment found in message: {message_dict}")
-
-        else:
-            logger.error(f"Expected dict but got: {type(message_dict)}")
-
-    except json.JSONDecodeError:
-        logger.error(f"Invalid JSON message: {message}")
+        message_dict = json.loads(message)
+        sentiment = message_dict.get("sentiment")
+        if sentiment is not None:
+            sentiments.append(sentiment)
+            update_chart()
     except Exception as e:
         logger.error(f"Error processing message: {e}")
 
 #####################################
-# Main Function
+# Main
 #####################################
-
-def main() -> None:
-    """Main entry point for the consumer."""
-    logger.info("START consumer - project_consumer_karto")
-
+def main():
+    logger.info("START Karto consumer.")
     if not DATA_FILE.exists():
-        logger.error(f"Data file {DATA_FILE} does not exist. Exiting.")
+        logger.error(f"Data file {DATA_FILE} does not exist.")
         sys.exit(1)
 
     try:
         with open(DATA_FILE, "r") as file:
             file.seek(0, os.SEEK_END)
-            print("Consumer is ready and waiting for new JSON messages...")
-
+            print("Karto consumer running... waiting for messages.")
             while True:
                 line = file.readline()
                 if line.strip():
                     process_message(line)
                 else:
                     time.sleep(0.5)
-                    continue
-
     except KeyboardInterrupt:
-        logger.info("Consumer interrupted by user.")
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.info("Consumer interrupted.")
     finally:
         plt.ioff()
         plt.show()
-        logger.info("Consumer closed.")
-
-#####################################
-# Conditional Execution
-#####################################
 
 if __name__ == "__main__":
     main()
